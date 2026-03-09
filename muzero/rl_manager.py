@@ -127,6 +127,16 @@ class RLManager:
             if done:
                 break
 
+        # Replace MCTS Q-values (v*_k) with actual Monte Carlo returns.
+        # MCTS values are noise when the networks are untrained. Using the real
+        # discounted return gives meaningful value targets from episode 1.
+        # The policy targets (π_k) still come from MCTS — only v*_k changes.
+        G = 0.0
+        for k in range(len(epidata) - 1, -1, -1):
+            s_k, _, pi_k, a_k, r_k = epidata[k]
+            G = r_k + config.DISCOUNT_GAMMA * G
+            epidata[k] = (s_k, G, pi_k, a_k, r_k)
+
         return epidata, total_reward
 
     @staticmethod

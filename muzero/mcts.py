@@ -75,6 +75,17 @@ class UMCTS:
         # Initialise root prior probs via NNp
         self._expand(root)
 
+        # Dirichlet noise on root priors — standard MuZero/AlphaZero technique.
+        # Without this, random weight biases make MCTS consistently favour one
+        # action, producing policies worse than random play.
+        if root.children and config.DIRICHLET_EPSILON > 0:
+            noise = np.random.dirichlet(
+                [config.DIRICHLET_ALPHA] * len(root.children)
+            )
+            eps = config.DIRICHLET_EPSILON
+            for child, n in zip(root.children.values(), noise):
+                child.prior_prob = (1 - eps) * child.prior_prob + eps * n
+
         for _ in range(n_simulations):
             leaf, depth = self._tree_policy(root)
 
@@ -106,16 +117,39 @@ class UMCTS:
     # ------------------------------------------------------------------
 
     def _tree_policy(self, node: MCTSNode) -> tuple["MCTSNode", int]:
-        """Traverse tree using UCB until a leaf is reached. Return (leaf, depth)."""
+        """Traverse tree using PUCT with min-max Q normalisation (MuZero paper, Appendix B)."""
         depth = 0
         while not node.is_leaf():
-            best_action = max(
-                node.children,
-                key=lambda a: node.children[a].ucb_score(node.visit_count)
-            )
+            best_action = self._best_action(node)
             node = node.children[best_action]
             depth += 1
         return node, depth
+
+    def _best_action(self, node: MCTSNode) -> int:
+        """
+        PUCT selection with min-max Q normalisation.
+
+        Raw Q-values from NNp/NNd rollouts have arbitrary scale (up to ±VALUE_SCALE
+        per rollout step). Without normalisation, the Q-value differences can be
+        10–30×  larger than the UCB exploration term, making exploration meaningless
+        and locking MCTS onto the action with the lucky random init.
+
+        Normalising Q to [0, 1] within each parent's children ensures the exploration
+        term (≈ UCB_C × prior × √N / (1+n)) always competes on equal footing.
+        """
+        children = node.children
+        q_vals = [c.q_value for c in children.values()]
+        min_q, max_q = min(q_vals), max(q_vals)
+        q_range = max_q - min_q
+
+        def puct(a):
+            c = children[a]
+            q_norm = (c.q_value - min_q) / (q_range + 1e-8)
+            explore = (config.UCB_C * c.prior_prob
+                       * math.sqrt(node.visit_count) / (1 + c.visit_count))
+            return q_norm + explore
+
+        return max(children, key=puct)
 
     def _expand(self, node: MCTSNode):
         """

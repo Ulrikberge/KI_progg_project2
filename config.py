@@ -26,11 +26,14 @@ GRAD_CLIP_NORM = 1.0             # gradient clipping (global norm)
 # Output scaling for bounded NN heads (tanh × scale)
 # NNd reward output:  tanh(x) * REWARD_SCALE  → [-REWARD_SCALE, REWARD_SCALE]
 # NNp value  output:  tanh(x) * VALUE_SCALE   → [-VALUE_SCALE, VALUE_SCALE]
-# With dmax=5 rollout steps, MCTS G ≤ dmax*REWARD_SCALE + VALUE_SCALE ≈ 10
-# so clip value *targets* (stored MCTS Q-values) at VALUE_CLIP:
-REWARD_SCALE      = 1.0          # CartPole reward is 1.0/step; scale matches
-VALUE_SCALE       = 5.0          # max expected discounted return in early training
-VALUE_CLIP        = 15.0         # generous ceiling for MCTS Q-value targets
+REWARD_SCALE      = 1.0          # CartPole reward is 1.0/step
+VALUE_SCALE       = 30.0         # ≈ expected return from random play (~25 steps)
+VALUE_CLIP        = 500.0        # clip MC-return value targets (episode can reach 500)
+
+# MCTS exploration: Dirichlet noise at root prevents early over-commitment to
+# one action when Q-values are biased by random weight initialisation.
+DIRICHLET_ALPHA   = 0.3          # concentration (lower = more noise)
+DIRICHLET_EPSILON = 0.25         # mixing weight for noise vs prior
 
 # Loss coefficients (from MuZero paper)
 VALUE_LOSS_COEFF  = 0.25
