@@ -3,12 +3,16 @@
 # All pivotal parameters live here. Change them in ONE PLACE.
 # =============================================================================
 
-# --- Game ---
-GYM_ENV_ID = "CartPole-v1"      # Any Gymnasium environment ID
+# --- Game: BitFall ---
+# Grid: GRID_ROWS rows of falling debris + 1 receptor row at the bottom.
+# Actions: 0 = slide left, 1 = stay, 2 = slide right.
+GRID_ROWS = 6                    # number of debris rows visible
+GRID_COLS = 8                    # width of the grid
+DEBRIS_DENSITY = 0.3             # probability a cell is debris in each new top row
 
 # --- Episode loop ---
 N_EPISODES = 200                 # Ne: total training episodes
-STEPS_PER_EPISODE = 500          # Nes: max steps per episode
+STEPS_PER_EPISODE = 200          # Nes: steps per episode (BitFall has no terminal)
 TRAINING_INTERVAL = 10           # It: train Psi every this many episodes
 
 # --- u-MCTS ---
@@ -19,16 +23,18 @@ MAX_ROLLOUT_DEPTH = 5            # dmax: max depth in DO_ROLLOUT
 MINIBATCH_SIZE = 32              # mbs
 LOOKBACK = 4                     # q: how many past states feed into NNr
 ROLL_AHEAD = 5                   # w: how many future steps for BPTT targets
-DISCOUNT_GAMMA = 0.997           # discount factor for value targets
+DISCOUNT_GAMMA = 0.99            # discount factor for value targets
 LEARNING_RATE = 1e-3
 GRAD_CLIP_NORM = 1.0             # gradient clipping (global norm)
 
 # Output scaling for bounded NN heads (tanh × scale)
 # NNd reward output:  tanh(x) * REWARD_SCALE  → [-REWARD_SCALE, REWARD_SCALE]
 # NNp value  output:  tanh(x) * VALUE_SCALE   → [-VALUE_SCALE, VALUE_SCALE]
-REWARD_SCALE      = 1.0          # CartPole reward is 1.0/step
-VALUE_SCALE       = 30.0         # ≈ expected return from random play (~25 steps)
-VALUE_CLIP        = 500.0        # clip MC-return value targets (episode can reach 500)
+# BitFall: max reward per step ≈ GRID_COLS (all debris caught), so REWARD_SCALE = GRID_COLS.
+# Episode return ≈ STEPS_PER_EPISODE * avg_reward_per_step.
+REWARD_SCALE      = 8.0          # ≈ GRID_COLS (max debris that can be caught per step)
+VALUE_SCALE       = 50.0         # ≈ expected episode return with reasonable play
+VALUE_CLIP        = 200.0        # clip MC-return value targets
 
 # MCTS exploration: Dirichlet noise at root prevents early over-commitment to
 # one action when Q-values are biased by random weight initialisation.

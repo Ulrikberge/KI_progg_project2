@@ -11,7 +11,7 @@ import jax
 import numpy as np
 
 import config
-from games.gym_game import GameStateManager
+from games.bitfall_game import GameStateManager
 from muzero.neural_network_manager import NeuralNetworkManager
 from muzero.rl_manager import RLManager
 from visualization.visualizer import Visualizer
@@ -19,7 +19,7 @@ from visualization.visualizer import Visualizer
 
 def main():
     print("=" * 60)
-    print(f"MuZero Knockoff  |  env: {config.GYM_ENV_ID}")
+    print(f"MuZero Knockoff  |  BitFall  {config.GRID_ROWS}x{config.GRID_COLS}")
     print(f"Episodes: {config.N_EPISODES}  |  MCTS sims: {config.N_MCTS_SIMULATIONS}")
     print("=" * 60)
 
@@ -43,17 +43,23 @@ def main():
     trained_nnm = rlm.run()
     trained_nnm.save_params(config.SAVE_PARAMS_PATH)
     print(f"\nTraining complete. Params saved to {config.SAVE_PARAMS_PATH}")
+    viz.save_metrics("results/training_metrics.png")
 
-    # --- Demo: play one episode with visualisation on ---
-    print("\nRunning demo episode (visualisation on) ...")
-    _demo_episode(gsm, rlm, viz)
+    # --- Demo A: actor-only (NNr + NNp, no MCTS) — satisfies spec actor requirement ---
+    print("\nRunning actor-only demo (NNr + NNp, no MCTS) ...")
+    _actor_demo(gsm, rlm)
+
+    # --- Demo B: full MCTS demo with game rendering ---
+    print("\nRunning MCTS demo episode ...")
+    _demo_episode(gsm, rlm)
+    viz.save_game_gif("results/demo_episode.gif")
 
     gsm.close()
     viz.close()
 
 
-def _demo_episode(gsm, rlm: RLManager, viz: Visualizer):
-    """Play one episode greedily using the trained policy."""
+def _demo_episode(gsm, rlm: RLManager):
+    """Play one episode greedily using the trained policy, with game rendering."""
     import config as cfg
     cfg.VISUALIZE = True
 
@@ -71,12 +77,41 @@ def _demo_episode(gsm, rlm: RLManager, viz: Visualizer):
         state, reward, done = gsm.step(state, action)
         total_reward += reward
         state_history.append(state)
-        viz.render_game_state(state)
+        rlm.visualizer.render_game_state(state)
         if done:
             break
 
-    print(f"Demo episode reward: {total_reward:.1f}")
     cfg.VISUALIZE = False
+    print(f"Demo episode reward: {total_reward:.1f}")
+
+
+def _actor_demo(gsm, rlm: RLManager):
+    """
+    Play one episode using only NNr + NNp (no MCTS) — the 'actor' described in the spec.
+    Action = argmax of NNp policy logits applied to the current abstract state.
+    """
+    import config as cfg
+    import jax
+
+    state = gsm.reset()
+    total_reward = 0.0
+    state_history = [state]
+
+    for _ in range(cfg.STEPS_PER_EPISODE):
+        if gsm.is_terminal(state):
+            break
+        phi_k = rlm._build_lookback(state_history, cfg.LOOKBACK)
+        sigma_k = rlm.asm.get_abstract_state(phi_k)
+        policy_logits, _ = rlm.asm.get_policy_and_value(sigma_k)
+        probs = jax.nn.softmax(policy_logits)
+        action = int(np.argmax(probs))
+        state, reward, done = gsm.step(state, action)
+        total_reward += reward
+        state_history.append(state)
+        if done:
+            break
+
+    print(f"Actor-only demo reward: {total_reward:.1f}")
 
 
 if __name__ == "__main__":
